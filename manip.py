@@ -226,7 +226,7 @@ def doCleanupEncode(X, y=None, cat=None, oh=None, binary=None, loo=None, woe=Non
         else:
             # one-hot encode, then drop 0 if created
             for oh_c in oh:
-                X = one_hot_encode(X, oh_c)
+                X = one_hot_encode(X, oh_c, False)
                 X.drop(0, axis=1, errors='ignore', inplace=True)
 
     if binary is not None:

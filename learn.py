@@ -230,3 +230,28 @@ def displayCVResults(searchObject):
     ax.set_xlabel('iterations', fontsize=15)
     plt.tight_layout()
     plt.show()
+
+
+def printScores(trainR2, testR2, testMSE, testMAE, params, output_df):
+
+    print("Training score:", trainR2)
+    print("Testing score:", testR2)
+    print("Test MSE:", testMSE)
+    print("Test MAE:", testMAE, '\n')
+
+    scores = {'Training Score': trainR2, 'Testing Score': testR2, 'Test MSE': testMSE, 'Test MAE': testMAE}
+    params.update(scores)
+    return output_df.append(params, ignore_index=True)
+
+
+def printLassoCoefs(lasso_coefs, x_train):
+    fig, ax = plt.subplots(figsize=(12, 10))
+    ax.plot(x_train.columns, lasso_coefs, color='#111111')
+    plt.setp(ax.get_xticklabels(), rotation=90)
+    plt.show()
+
+    print("Number of features before Lasso:", len(lasso_coefs))
+    print("Number of features after fitting Lasso:", len(lasso_coefs[lasso_coefs > 0]))
+    print("\n")
+    return len(lasso_coefs)-len(lasso_coefs[lasso_coefs > 0])
+

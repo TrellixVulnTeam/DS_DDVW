@@ -146,13 +146,22 @@ def summarize(df):
 # One-Hot encode a CATEGORICAL variable using pd.get_dummies
 # When drop=True, drop the categorical variable you used to
 # create the one-hot columns
-def one_hot_encode(ds, cat_attribute_name, drop=True):
-    one_hot = pd.get_dummies(ds[cat_attribute_name])
+def one_hot_encode(ds, cat_attribute_name, usePrefix=True, drop=True):
+    if usePrefix:
+        one_hot = ds[cat_attribute_name].str.get_dummies().add_prefix(cat_attribute_name + "_")
+    else:
+        one_hot = pd.get_dummies(ds[cat_attribute_name])
+
     if drop:
         ds = ds.drop(cat_attribute_name, axis=1)
     ds = ds.join(one_hot)
     return ds
 
+
+def one_hot_all(self, cat_attrs, usePrefix=True, drop=True):
+    for c in cat_attrs:
+        self = one_hot_encode(self, c, usePrefix=usePrefix, drop=drop)
+    return self
 
 # replace values in values_list with replacement value
 # for all columns in cols_list in dataframe df.
