@@ -1,11 +1,7 @@
 
-import datetime as dt
 import urllib.request as req
 import urllib.error as er
 import re
-import bs4 as bs
-import numpy as np
-import pandas as pd
 
 
 def openFile(f):

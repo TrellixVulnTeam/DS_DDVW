@@ -1,7 +1,5 @@
 
 import parse
-import re
-import datetime as dt
 import bs4 as bs
 
 dates = []
@@ -14,7 +12,9 @@ day_node = -1
 
 # fake date to match one of the dates in the file
 today_string = "1/15"
+
 # what you would really do
+# import datetime as dt
 # today = dt.date.today()
 # today_string = today.strftime("%m/%d")
 
@@ -26,6 +26,6 @@ precip_types, precip_inches = parse.extractPrecipitation(soup_handle, day_node)
 
 # default # of days to show is 3
 # to show > 3 days, pass an extra argument with the # of days to show
-parse.writeWidget(dates, highs, lows, forecasts, precip_types, precip_inches)
+parse.writeWidget(dates, highs, lows, forecasts, precip_types, precip_inches, 5)
 
 
