@@ -33,6 +33,12 @@ print("\n")
 print("Substitute all instances of 'er' at a word-boundary with 'as'")
 manip.sub_and_write("data/SampleTextFile_1000kb.txt", r'er\b', "as")
 
+print("\n")
+utils.block_operator("data/formidable.txt", utils.do_func(print))
+print("Use a regular expression to count the number of backslashes in the file:")
+print(str(manip.count_matches("data/formidable.txt", r'\\')))
+
+
 # NOTE: This is commented out because this implementation is not yet complete.
 #
 # scrape_fields_list = ['Best Bid/Ask', '1 Year Target', 'Share Volume', '50 Day Avg. Daily Volume', 'Previous Close', '52 Week High/Low', 'Market Cap', 'P/E Ratio', 'Forward P/E (1y)', 'Earnings Per Share (EPS)', 'Annualized Dividend', 'Ex-Dividend Date', 'Dividend Payment Date', 'Current Yield', 'Beta Open Price', 'Open Date', 'Close Price', 'Close Date']
