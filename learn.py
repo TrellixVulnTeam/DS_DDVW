@@ -13,8 +13,6 @@ import seaborn as sb
 import matplotlib.pyplot as plt
 import sklearn.base as skbase
 import sklearn.metrics as smet
-import sklearn.pipeline as skpipe
-import sklearn.preprocessing as skpre
 import sklearn.linear_model as lm
 import sklearn.model_selection as ms
 
@@ -150,7 +148,7 @@ def showMetrics(model, yTest, yPredicted, X=None, y=None, cv=None):
     tpr = []
     thresholds = []
     if cv is not None:
-        #use cross-validated predictions
+        # use cross-validated predictions
         fpr, tpr, thresholds = smet.roc_curve(y, y_scores)
     else:
         fpr, tpr, thresholds = smet.roc_curve(yTest, y_scores)

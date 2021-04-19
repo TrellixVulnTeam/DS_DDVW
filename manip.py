@@ -9,7 +9,7 @@
 #### regex
 #### substitutions / stripping
 #### sub-setting
-#### date aggregation
+#### date manipulation & aggregation
 #### dataframe aggregation and manipulation
 #### data set balancing
 #### categorical encoding
@@ -60,36 +60,6 @@ def sub_and_write(f, regex, replacement):
 
     # check (debug; small files only!)
     # block_operator(nhn, do_func(print))
-
-
-# sub-setting
-# set_names, and a dictionary of what belongs in what set
-# returns: a dataframe
-# requires: pandas
-#
-# def sub_set(set_names, set_descriptions):
-
-
-# agg_dates
-# bucketize dates by week, month, quarter, year, or fiscal year
-# returns: a dictionary
-# requires: datetime
-#
-# def agg_dates(agg_type, date_list, date_format_string):
-#
-#    date_dictionary = dict.fromkeys(['week', 'month', 'quarter', 'year', 'fiscal year'])
-#    if agg_type == "week":
-
-#    elif agg_type == "month":
-
-#    elif agg_type == "quarter":
-
-#    elif agg_type == "year":
-
-#    else:
-# fiscal year
-
-#    return date_dictionary
 
 
 # stack_dataframes
@@ -185,6 +155,26 @@ def recode_col(df, existing_col, mapping_dict, new_col):
     df[new_col] = df[existing_col].map(mapping_dict)
 
 
+# function by Joanna Gyory for cleaning time series data
+# puts data in a wide format, pads with 0s, and creates an
+# datetime formatted index
+#
+def long_format(df, year):
+    long = pd.DataFrame(df.unstack())
+    a = long.index.get_level_values(1).astype(str)
+    b = a.str.pad(width=5,side='left',fillchar='0')
+    idx = year + "-" + long.index.get_level_values(0).astype(str) + " " + b
+    long.index = pd.to_datetime(idx, format='%Y-%d-%b %I %p')
+    return long
+
+
+################################
+# datetime related functions
+################################
+def col_to_timestamp(df, col_name, formatting, add=False):
+    return df
+
+
 # numeric_only: return a new dataframe that is a subset of the dataframe argument (df)
 # containing only continuous variables.
 # This only works if categorical variables and binary variables are NOT coded.
@@ -213,7 +203,8 @@ def doCleanupEncode(X, y=None, cat=None, oh=None, binary=None, loo=None, woe=Non
 
     if oh is not None:
         if NoData:
-            ec = OneHotEncoder(cols=oh, use_cat_names=True, return_df=True, handle_unknown='indicator', handle_missing='indicator').fit(X)
+            ec = OneHotEncoder(cols=oh, use_cat_names=True, return_df=True, handle_unknown='indicator',
+                               handle_missing='indicator').fit(X)
             X = ec.fit_transform(X)
             # dropping these columns did not help performance
             # for o in oh:
@@ -254,7 +245,6 @@ def doCleanupEncode(X, y=None, cat=None, oh=None, binary=None, loo=None, woe=Non
         lenc = LeaveOneOutEncoder(cols=loo, return_df=True).fit(X, y)
         X = lenc.transform(X).round(2)
 
-
     # Cast all to int64
     # X = X.astype("int64")
 
@@ -269,7 +259,6 @@ def doCleanupEncode(X, y=None, cat=None, oh=None, binary=None, loo=None, woe=Non
 # Binary classification balancer
 #
 def rebalanceSample(df, col, majority_val, minority_val, minority_percent, seed):
-
     # Separate majority and minority classes
     df_majority = df[df[col] == minority_val]
     df_minority = df[df[col] == majority_val]

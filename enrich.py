@@ -18,7 +18,6 @@ import zlib as zl
 
 import sklearn.preprocessing as skp
 import sklearn.model_selection as ms
-import seaborn as sb
 
 
 # split a dataframe into a test set and training set
@@ -59,6 +58,9 @@ def split_train_test_strat(data, split_category, n_splits, test_ratio, seed):
     return strat_train_set, strat_test_set
 
 
+# split a dataframe into a test set and training set
+# using the shuffle method
+#
 def split_train_test_shuffle(data, n_splits, test_ratio, seed=None):
     train_set = pd.DataFrame(data=None, columns=data.columns, index=data.index)
     test_set = pd.DataFrame(data=None, columns=data.columns, index=data.index)
@@ -66,6 +68,23 @@ def split_train_test_shuffle(data, n_splits, test_ratio, seed=None):
     for train_idx, test_idx in rs.split(data):
         train_set = data.loc[train_idx]
         test_set = data.loc[test_idx]
+    return train_set, test_set
+
+
+# split a time series dataframe into a test set and training set
+# assuming a size 6 rolling window
+#
+def split_train_test_ts(data, test_ratio, window_size=6):
+    num_rows = data.shape[0]
+    num_to_split = num_rows - (window_size * 2)
+    train_num = (1 - test_ratio) * num_to_split / 100
+    test_num = test_ratio * num_to_split / 100
+    train_start = window_size
+    train_end = window_size + train_num
+    test_start = train_end
+    test_end = train_end + test_num
+    train_set = data.iloc[train_start:train_end,:]
+    test_set = data.iloc[test_start:test_end,:]
     return train_set, test_set
 
 
