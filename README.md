@@ -1,2 +1,2 @@
 # DS
-General DS library code; HDS 805 & 807 code
+General DS library code; UNH HDS 805, 807 and 823, UCDavis HCA 203
