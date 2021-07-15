@@ -4,8 +4,9 @@ import pandas as pd
 
 # SSA2FIPS = utils.load_data("data", "ssa_fips_state_county2011_augmented.csv")
 # BRFSS = utils.load_data("data", "BRFSSCountyAggregates2010.csv")
-PUF = utils.load_data("data/PUF", "PUF_COUNTY_SUMMARY.csv")
+# PUF = utils.load_data("data/PUF", "PUF_COUNTY_SUMMARY.csv")
 # PUF2 = utils.load_data("data/PUF", "PUF_COUNTY_SUMMARY_50.csv")
+PUF = utils.load_data("data/PUF", "PUF_ELIX_IP2009.csv")
 RWJF = utils.load_data("data", "RWJF2010.csv")
 
 # Only Need CBSA Info from SSA2FIPS
@@ -34,5 +35,6 @@ PUF_RWJF = pd.merge(PUF, RWJF, left_on=["FIPS_STATE_CODE", "FIPS_COUNTY_CODE"], 
 # PUF2_BRFSS = pd.merge(PUF2_RWJF, BRFSS, left_on=["FIPS_STATE_CODE", "FIPS_COUNTY_CODE"], right_on=["StateCode", "CountyFIPS"], how='left')
 
 # Write to CSV
-PUF_RWJF.to_csv("data/PUF/PUF_RWJF_MERGED.csv")
+# PUF_RWJF.to_csv("data/PUF/PUF_RWJF_MERGED.csv")
+PUF_RWJF.to_csv("data/PUF/PUF_RWJF_IP2009.csv")
 # PUF2_BRFSS.to_csv("data/PUF/PUF_BRFSS_MERGED_50.csv")
