@@ -1,0 +1,263 @@
+---
+title: |
+  | ADMN 872: Predictive Analytics
+  |
+  | Assignment 3: Classification Models
+author: |
+  | Kyle P. Rasku
+output: html_document
+---
+
+## Data
+
+Consider the data set `OJ`, which is included in R library `ISLR`. The following code chunk will load the library and necessary packages for this assignment. If you haven't already install these packages please use `install.packages()` command. You can use `head(OJ)` or `?OJ` to get more information about the data set. We would like to predict the variable `Purchase` which is equal to `CH` or `MM` for Citrus Hill or Minute Maid Orange Juice.
+
+```{r}
+library(ISLR)
+library(MASS)
+library(class)
+library(caret)
+```
+```{r}
+str(OJ)
+```
+
+## Questions
+
+1. (5 points) Separate 20% of your data into testing and remainder as training.
+
+```{r}
+set.seed(121)
+trainRowNumbers <- createDataPartition(OJ$Purchase, p=0.8, list=FALSE)
+train <- OJ[trainRowNumbers,]
+test <- OJ[-trainRowNumbers,]
+
+
+X.test <- test[, 2:18]
+y.test <- test$Purchase
+
+y <- train$Purchase
+```
+
+Descriptive Analysis Summaries for OJ Variables using Caret
+
+Right away we can see that 523 total purchases were for CH, and 334 were for MM
+
+```{r}
+library(skimr)
+skimmed <- skim(train)
+skimmed[, c(1:15)]
+```
+
+
+There are no missing values, so we don't need to have worries about missing data.
+
+```{r}
+# Convert Categorical Variables to Dummy Variables (except Purchase variable)
+
+dummies_model <- dummyVars(Purchase ~ ., data=train)
+train_mat <- predict(dummies_model, newdata = train)
+train <- data.frame(train_mat)
+str(train)
+```
+
+
+Apply Range pre-processing
+
+```{r}
+range_model <- preProcess(train, method='range')
+train <- predict(range_model, newdata = train)
+train$Purchase <- y
+apply(train[, 1:10], 2, FUN=function(x){c('min'=min(x), 'max'=max(x))})
+str(train)
+```
+
+
+Group X Variables by levels of y variable to see which variables might do a good job of helping us separate levels of y
+
+```{r}
+featurePlot(x = train[, 1:18], 
+            y = train$Purchase, 
+            plot = "box",
+            strip=strip.custom(par.strip.text=list(cex=.7)),
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+```
+
+
+There's a small separation provided by ListPriceDiff and SalePriceMM, STORE, StoreID, and WeekofPurchase.
+There's a good separation provided by the variable LoyalCH.
+
+Density Curve Analysis can also help us choose candidate variables
+
+```{r}
+featurePlot(x = train[, 1:18], 
+            y = train$Purchase, 
+            plot = "density",
+            strip=strip.custom(par.strip.text=list(cex=.7)),
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+```
+
+Several of these show good separation between the nature of the density plots.  
+
+For example: LoyalCH, WeekofPurchase, PriceCH, PriceMM, STORE, and to a lesser degree ListPriceDiff & SalePriceMM.
+
+
+Set up Classification Model Training control to use for Logistic Regression and LDA models.
+Predict probabilities (Default level is .5).
+Enable cross-validation.
+
+```{r}
+cls.ctrl <- trainControl(method = "repeatedcv", 
+                         number = 5, repeats = 5,
+                         classProbs = TRUE, summaryFunction = twoClassSummary,
+                         savePredictions = "final", allowParallel = TRUE)
+
+```
+
+
+2. (15 points) Develop a classification model where the variable `Purchase` is the dependent variable using the Logistic Regression method. (Independent variables are `PriceCH`, `PriceMM`, `STORE`, and `PriceDiff`)
+
+```{r}
+set.seed(121)
+glm.fit <- train(Purchase ~ PriceCH + PriceMM + STORE + PriceDiff, 
+                 data = train, trControl = cls.ctrl,
+                 method = "glm", family = "binomial", metric = "ROC")
+
+glm.fit
+```
+
+```{r}
+plot(varImp(glm.fit))
+```
+
+
+PriceDiff contributed most to this model's accuracy, and PriceMM contributed nothing.  Specificity was low at ~37%
+
+3. (10 points) Obtain the confusion matrix and compute the training error rate based on the logistic regression classification. (Make sure to check what the high probabilities corresponds to: `MM` or `CH`, hint: `contrasts(train$Purchase)`)
+
+```{r}
+
+#Training CM & Error rate / accuracy
+confusionMatrix(glm.fit)
+```
+```{r}
+
+#Predictions on X.test
+predicted <- predict(glm.fit, X.test)
+
+#Predicted matrix
+confusionMatrix(reference = y.test, data = predicted, mode='everything', positive='MM')
+```
+
+On the test data, the model was able to predict the purchase outcome about 67% of the time.
+
+The largest # of errors occurred when the model predicted people would purchase MM when they actually purchased CH.
+
+Based on prior data exploration, this model might have performed better if we had included the variable LoyalCH in the list of covariates (or maybe even based the whole model's prediction on this one variable - see supplemental submission).
+
+
+4. (15 points) Develop a classification model where the variable `Purchase` is the dependent variable using the LDA method. (Independent variables are `PriceCH`, `PriceMM`, `STORE`, and `PriceDiff`)
+```{r}
+set.seed(121)
+lda.fit <- train(Purchase ~ PriceCH + PriceMM + STORE + PriceDiff, 
+                 data = train, trControl = cls.ctrl,
+                 method = "lda", metric = "ROC")
+
+lda.fit
+```
+
+5. (10 points) Obtain the confusion matrix and compute the training error rate based on the LDA classification.
+```{r}
+
+#Training CM & Error rate / accuracy
+confusionMatrix(lda.fit)
+```
+
+```{r}
+
+#Predictions on X.test
+predicted.lda <- predict(lda.fit, X.test)
+
+#Predicted matrix
+confusionMatrix(reference = y.test, data = predicted.lda, mode='everything', positive='MM')
+```
+
+The LDA model had slightly improved accuracy compared to the logistic regression, and was able to predict the customer's purchase on the test set 69.5% of the time.
+
+Once again, the model made the most mistakes predicting who would purchase CH.  
+
+6. (15 points) Develop a classification model for the variable `Purchase` using the KNN method when k=3. (Use only  `PriceCH`, `PriceMM`, `STORE`, and `PriceDiff`, *hint: `cbind()`*)
+
+```{r}
+#Remember to create testing and training sets without the variable `Purchase`. You do not need to create a new testing and training set as in question 1. You could just remove one variable from your already created data set
+
+#Since we want k=3, we need to remove some of the training controls, and set tuneGrid to k=3 
+set.seed(121)
+knn_control <- trainControl(method="repeatedcv", repeats = 5)
+knn.fit <- train(Purchase ~ PriceCH + PriceMM + STORE + PriceDiff,
+                 data= train, trControl = knn_control,
+                tuneGrid=data.frame(k=3), method="knn")
+
+knn.fit
+```
+
+7. (10 points) Obtain the confusion matrix and compute the training error rate based on the KNN classification.
+
+```{r}
+
+#Training CM & Error rate / accuracy
+confusionMatrix(knn.fit)
+```
+
+Training accuracy was 69%; let's see if it translates to the test data...
+
+```{r}
+#Predictions on X.test
+predicted.knn <- predict(knn.fit, X.test)
+
+#Predicted matrix
+confusionMatrix(reference = y.test, data = predicted.knn, mode='everything', positive='MM')
+
+```
+
+The KNN model performed significantly worse than either logistic regression or LDA on the test data, with only ~60% accuracy on the test set.
+
+This model overfitted the training data, and then it did not perform well on the testing data.
+
+8. (10 points) Based on the 3 classification models for `Purchase`, which model you would prefer and why? Are you satisfied with the predictions? (Hint: testing error rate)
+
+```{r}
+confusionMatrix(reference = y.test, data = predicted.lda, mode='everything', positive='MM')
+```
+
+```{r}
+table(predicted.lda, y.test)
+```
+
+
+```{r}
+pred.accuracy = round(mean(predicted.lda == y.test)*100,2)
+pred.accuracy
+```
+
+```{r}
+# plot of predicted with misclassified:
+test$pred.right = predicted.lda == test$Purchase
+
+qplot(PriceDiff, STORE, data=test, cex=2, col=pred.right)
+```
+
+The LDA model had the best performance here.  It did not overfit the training data, and performed pretty well on the testing data, with nearly 70% accuracy.  Given the predictors and classification models used, this model was the best choice for predicting orange juice purchases.
+
+
+9. (10 points) Please summarize your learning outcome for this assignment both in terms of R and classification methods.
+
+I took the opportunity to use the caret package to do these model comparisons for this assignment.  
+
+I am familiar with sklearn and this is the R version of this very handy machine learning package.
+
+It makes it easy to run a variety of model with cross-validation and compare the results!
+
+

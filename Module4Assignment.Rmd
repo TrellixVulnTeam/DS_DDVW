@@ -1,0 +1,511 @@
+---
+title: |
+  | ADMN 872: Predictive Analytics
+  |
+  | Assignment 4
+author: |
+  | Kyle P. Rasku
+output: html_document
+---
+
+
+```{r setup, include=FALSE, tidy=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(gridExtra) 
+library(ggplot2)
+library(ggfortify)
+library(kableExtra)
+library(car)
+library(lattice)
+library(ggvis)
+library(MASS) 
+library(ISLR) 
+library(class)
+library(magrittr)
+library(boot)
+library(leaps)
+library(glmnet)
+library(pls)
+library(caret)
+library(formatR)
+```
+
+## Data
+
+Consider the dataset titled "Boston.csv". The list of variables and their descriptions are as follows: 
+
+- crim - per capita crime rate by town
+- zn - proportion of residential land zoned for lots over 25,000 sq.ft.
+- indus - proportion of non-retail business acres per town.
+- chas - Charles River dummy variable (1 if tract bounds river; 0 otherwise)
+- nox - nitric oxides concentration (parts per 10 million)
+- rm - average number of rooms per dwelling
+- age - proportion of owner-occupied units built prior to 1940
+- dis - weighted distances to five Boston employment centers
+- rad - index of accessibility to radial highways
+- tax - full-value property-tax rate per $10,000
+- ptratio - student to teacher ratio by town
+- medv - Median value of owner-occupied homes in $1000's
+
+Our variable of interest to predict is `medv`. We will be working with the entire data set in this example, hence, no need to do test/train split.
+
+
+## Questions
+
+0. Data prep:
+
+- Read in your data, **You are not asked to do test/train split on this assignment**
+- Check your data using the `head()` command in R. This step will help you to identify whether the variables are numeric or categorical.
+
+```{r}
+Boston=read.table("https://unh.box.com/shared/static/0xdyft0fbl3asgvsh9k9ts8eju1pohmv.csv", sep=",", header = TRUE)
+
+head(Boston)
+```
+```{r}
+str(Boston)
+```
+```{r}
+library(skimr)
+skimmed <- skim(Boston)
+skimmed[, c(1:12)]
+```
+
+No overtly missing values.
+
+Apply Range pre-processing.
+
+```{r}
+y <- Boston$medv
+range_model <- preProcess(Boston, method='range')
+standardBoston <- predict(range_model, newdata = Boston)
+apply(standardBoston[, 1:11], 2, FUN=function(x){c('min'=min(x), 'max'=max(x))})
+str(standardBoston)
+```
+
+Looking at pair plots for ALL standardized variables against y (since you specified not to divide the data).
+
+
+```{r}
+featurePlot(x = standardBoston[, 1:4], 
+            y = standardBoston$medv, 
+            plot = "pairs",
+            pt.size="1",
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+```
+
+Unlike the AirBnb data, this data set has a lot of great features.
+There's a negative relationship between indus, crim and medv, and positive between zn and medv.
+While the majority of y are in chas=0, there are a few in chas=1.
+
+
+```{r}
+featurePlot(x = standardBoston[, 5:8], 
+            y = standardBoston$medv, 
+            plot = "pairs",
+            pt.size="1",
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+```
+
+Here are more great relationships.  There is a very strong positive linear relationship between rm and medv.
+Also, it appears there's some sort of relationship between dis and medv, but there's a lot of variance there.
+There are negative relationships also! Between nox, age and medv, for example.
+
+```{r}
+featurePlot(x = standardBoston[, 9:11], 
+            y = standardBoston$medv, 
+            plot = "pairs",
+            pt.size="1",
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+```
+
+Here we have some relationships that are not as significant, or perhaps not as easy to determine at just a glance?
+I would expect a positive relationship between medv and tax, and perhaps a negative relationship between medv and rad, ptratio.
+rad & ptratio appear to have no relationship to each other (as expected), but tax & ptratio also appear to have no relationship.
+If I had to name the relationship between y (medv) and ptratio based on this pair plot, I would say, a weak negative linear relationship.
+
+1. (18 points)	**Cross Validation:** 
+
+- Consider 2 multiple linear regression models where medv is the dependent variable: 
+  
+    - Model 1) Use all the above variables, i.e., `medv~.`
+    - Model 2) Use only `rm` and `ptratio`, i.e., `medv~rm+ptratio`
+
+
+- Using 3 cross-validation techniques (leave-one-out, kfolds with K=5, and kfolds with K=10), determine which model provides the best predictive performance. (Hint: `glm` and `cv.glm`)
+
+```{r}
+errors_list <- list()
+# Model Creation
+modelcv1=glm(medv~., data=standardBoston)
+modelcv2=glm(medv~rm+ptratio, data=standardBoston)
+
+# Leave One Out Cross Validation - Model 1
+loocv1<-cv.glm(standardBoston, modelcv1)
+errors_list <- c(errors_list, loocv1$delta[1])
+errors_list[1]
+```
+
+```{r}
+# Leave One Out Cross Validation - Model 2
+loocv2<-cv.glm(standardBoston, modelcv2)
+errors_list <- append(errors_list, loocv2$delta[1])
+errors_list[2]
+```
+
+The second model's error is not much greater than the first model's here; which is very interesting considering the second model only has two features, and the first model has all 11 features.  We saw in the pair plots that rm was likely to be an excellent choice of predictor variable for the outcome variable medv.
+
+```{r}
+# K-Fold Cross Validation - Model 1
+# (Note: I am using delta[2] here, because we are using k-fold and not LOO cv. (In these examples there's not difference tho. :))
+ks <- c(5, 10)
+for (k in ks) {
+  kcv<-cv.glm(standardBoston, modelcv1, K=k)
+  errors_list <- append(errors_list, kcv$delta[2])
+}
+errors_list[3:4]
+```
+
+K-Fold comparison between 5 and 10 folds for Model 1 (medv~.)
+10 fold validation error is very slightly higher than 5 fold; not much sense in using 10 fold here when error rates are so similar.
+
+```{r}
+# K-Fold Cross Validation - Model 2
+for (k in ks) {
+  kcv<-cv.glm(standardBoston, modelcv2, K=k)
+  errors_list <- append(errors_list, kcv$delta[2])
+}
+errors_list[5:6]
+```
+
+In Model 2, once again, not a substantial difference.
+
+
+```{r echo=FALSE}
+# LMs 
+m1=lm(medv~., data=standardBoston)
+m2=lm(medv~rm+ptratio, data=standardBoston)
+
+MSEs=c(mean(m1$residuals^2), mean(m2$residuals^2))
+errors_list <- append(errors_list, MSEs)
+names(errors_list) <- c("Model1 LOO", "Model2 LOO", "Model1 K=5", "Model1 K=10", "Model2 K=5", "Model2 K=10", "MSE1", "MSE2")
+
+text_tbl <- data.frame(errors_list)
+
+kable(text_tbl) %>%
+  kable_styling(bootstrap_options = "condensed", full_width = F, htmltable_class="lightable-minimal", position = "left")
+```
+
+
+Model 1 is the superior model / has the lower error both with standard MSE and with cross validation, but not by much.  
+Considering Model 1 has 11 features and Model 2 has 2 features, they have remarkably similar predictive capabilities.
+
+
+2.	(18 points)	**Subset Selection:** 
+
+- Using the 3 model selection algorithms (subset selection, forward, and backward selection) identify the best combination of independent variables (you need to use all independent variables as potential candidates). 
+
+- Choose the model(s) that minimize BIC and Cp
+
+- Estimate the best model(s) and calculate the MSE (Hint:`...$delta[1]`) using 5 fold cross validation
+
+```{r}
+# Subset Selection
+full_model<-regsubsets(medv~., standardBoston, method= "exhaustive", nvmax=13)
+
+which.min(summary(full_model)$bic)
+which.min(summary(full_model)$cp)
+```
+
+```{r}
+plot(full_model)
+```
+
+The smallest BIC is -490 and several models correspond to this level of fit: 
+One model with all the variables, 
+One with all the variables except indus, 
+One with all the variables except indus and zn,
+One with all the variables except indus, rad and tax, 
+and One with all the variables except indus, zn, rad and tax
+
+The which.min function has chosen model 10 as the best model using BIC and Cp:
+
+```{r}
+summary(full_model)
+```
+
+Model 10 contains all the variables except indus.
+
+```{r}
+# Subset Selection Plots
+par(mfrow=c(2,2))
+plot(summary(full_model)$rsq, type="o", ylab="R-Squared", xlab="")
+plot(summary(full_model)$adjr2, type="o", ylab="Adj-R-Squared", xlab="")
+plot(summary(full_model)$bic, type="o", ylab="BIC", xlab="")
+plot(summary(full_model)$cp, type="o", ylab="Cp", xlab="")
+```
+
+It looks like both R Squared / Adj R Squared and BIC & Cp are optimized with Model 10!
+
+```{r}
+# Forward Stepwise Selection
+
+forward_model<-regsubsets(medv~., standardBoston, nvmax=13, method="forward")
+plot(forward_model)
+```
+
+Forward Selection chooses a model with 9 features, 8 features or 7 features.
+Here, rad and tax are excluded in every model where BIC is minimized.
+
+
+```{r}
+which.min(summary(forward_model)$bic)
+which.min(summary(forward_model)$cp)
+```
+
+Forward selection algorithm favors models 7 & 11.
+
+```{r}
+summary(forward_model)
+```
+
+Model 7 has crim, chas, nox, rm, age, dis and ptratio, and does not have zn, indus, rad & tax.
+Model 11 has all the features.
+
+
+```{r}
+# Forward Stepwise Plots
+par(mfrow=c(2,2))
+plot(summary(forward_model)$rsq, type="o", ylab="R-Squared", xlab="")
+plot(summary(forward_model)$adjr2, type="o", ylab="Adj-R-Squared", xlab="")
+plot(summary(forward_model)$bic, type="o", ylab="BIC", xlab="")
+plot(summary(forward_model)$cp, type="o", ylab="Cp", xlab="")
+```
+
+Using the forward algorithm, BIC is minimized at model 7, while Cp is minimized at model 11.
+R Squared and Adj R Squared are maximized at model 11.
+
+```{r}
+# Backward Stepwise Selection
+
+backward_model<-regsubsets(medv~., standardBoston, nvmax=13, method="backward")
+plot(backward_model)
+```
+
+Backward Stepwise selection removed indus, indus & zn, indus, zn & tax, or indus, zn, tax & rad.
+The results are similar to Forward Stepwise selection.
+
+```{r}
+which.min(summary(backward_model)$bic)
+which.min(summary(backward_model)$cp)
+```
+
+Model 10 minimizes both BIC and Cp.
+
+```{r}
+summary(backward_model)
+```
+
+Model 10 contains all features except indus.  This is the same optimization we rec'd from full Subset Selection.
+
+```{r}
+# Backward Stepwise Plots
+par(mfrow=c(2,2))
+plot(summary(backward_model)$rsq, type="o", ylab="R-Squared", xlab="")
+plot(summary(backward_model)$adjr2, type="o", ylab="Adj-R-Squared", xlab="")
+plot(summary(backward_model)$bic, type="o", ylab="BIC", xlab="")
+plot(summary(backward_model)$cp, type="o", ylab="Cp", xlab="")
+
+```
+
+Optimization of all parameters is achieved by Model 10 (has 10 features), but BIC is also minimized with Model 7 (has 7 features).
+
+```{r}
+# Model 10 is Selected by Subset & Backward Selection
+# 'indus' is NOT included in the model
+model10=glm(medv~crim+zn+chas+nox+rm+age+dis+rad+tax+ptratio, data=standardBoston)
+
+# 5-Fold Cross Validation
+cv5<-cv.glm(standardBoston, model10, K=5)
+cv5$delta[2]
+```
+
+3.	(18 points)	**Shrinkage:** 
+
+- Using all the variables (except `MEDV`), complete data set, and same grid used in lecture, find the best lambda based on a 10 fold cross validation.
+
+- Estimate a Lasso regression using the best lambda, predict using the whole data set (Hint: `newx=x`) and get the MSE.
+
+```{r}
+standardBoston=na.omit(standardBoston)
+
+x=model.matrix(medv~., standardBoston)[,-1]
+lambda_grid=10^seq(10,-2, length=100)
+ridge<-glmnet(x, standardBoston$medv, alpha=0, lambda=lambda_grid)
+
+set.seed(121)
+# Use 75% of the 506 rows
+train=sample(1:nrow(x), 380)
+test=(-train)
+
+cv.out<-cv.glmnet(x[train,], standardBoston$medv[train], alpha=0, lambda=lambda_grid, nfolds=10)
+plot(cv.out)
+bestlam=cv.out$lambda.min
+bestlam
+```
+
+The best lambda is 0.01, with alpha = 0.
+
+```{r}
+
+optimal_ridge<-glmnet(x[train,], standardBoston$medv[train], alpha=0, lambda=bestlam)
+coef(optimal_ridge)
+
+# Training data predictions
+predict(optimal_ridge, type="coefficients", s=bestlam)[1:11,]
+```
+
+```{r}
+# Training Preds
+
+train_preds<-predict(optimal_ridge, s=bestlam, newx=x[train,])
+mean((train_preds-standardBoston$medv[train])^2)
+```
+
+
+```{r}
+# Predictions using the Test Set
+
+ridgepred<-predict(optimal_ridge, s=bestlam, newx=x[test,])
+mean((ridgepred-standardBoston$medv[test])^2)
+```
+
+```{r}
+plot(x=ridgepred, y=standardBoston$medv[test])
+```
+
+A great result!!!
+Ridge really optimized performance on the testing set.
+
+Now, let's see what happens with LASSO...
+
+```{r}
+# Obtaining the Best Lambda for LASSO (alpha=1) Regression with 10 Fold Cross-Validation
+set.seed(121)
+cv.out2<-cv.glmnet(x[train,], standardBoston$medv[train], alpha=1, lambda=lambda_grid, nfolds=10)
+plot(cv.out2)
+```
+
+```{r}
+cv.out2$lambda.min
+```
+
+LASSO lambda is also optimized at 0.01.
+
+```{r}
+optimal_lasso<-glmnet(x[train,], standardBoston$medv[train], alpha=1, lambda=cv.out2$lambda.min)
+coef(optimal_lasso)
+
+# Training data predictions
+predict(optimal_lasso, type="coefficients", s=cv.out2$lambda.min)[1:11,]
+```
+
+zn, indus and rad have fallen out of the model!
+
+```{r}
+# Training Preds
+
+train_preds<-predict(optimal_lasso, s=cv.out2$lambda.min, newx=x[train,])
+mean((train_preds-standardBoston$medv[train])^2)
+```
+
+
+```{r}
+# Predictions using the Test Set
+
+lassopred<-predict(optimal_lasso, s=cv.out2$lambda.min, newx=x[test,])
+mean((lassopred-standardBoston$medv[test])^2)
+```
+
+```{r}
+plot(x=lassopred, y=standardBoston$medv[test])
+```
+
+LASSO also minimized error on the test set! It looks like Ridge did very slightly better...though we also need to compare performance of the OLS model.
+
+```{r}
+# OLS
+ols<-glmnet(x[train,], standardBoston$medv[train], lambda=0)
+trainpred <- predict(ols, s=0, newx=x[train,], exact=T)
+testpred<-predict(ols, s=0, newx=x[test,], exact=T)
+
+mean((trainpred-standardBoston$medv[train])^2)
+mean((testpred-standardBoston$medv[test])^2)
+```
+
+```{r}
+plot(x=testpred, y=standardBoston$medv[test])
+```
+
+```{r}
+# Compare the Test Set Predictions:
+mean((ridgepred-standardBoston$medv[test])^2)
+mean((lassopred-standardBoston$medv[test])^2)
+mean((testpred-standardBoston$medv[test])^2)
+```
+
+It looks like Ridge is the best performer here, but they are all not too shabby.
+
+4. (18 points)	**Dimension Reduction:**
+
+- Using the whole data, estimate a principle components regression. (Hint: No need to use `subset=train` argument)
+
+```{r }
+pcrfit<-pcr(medv~., data=standardBoston, validation="CV")
+summary(pcrfit)
+```
+
+The first 5 components explain 90% of the variance in the X matrix and 44.3% of the variance in medv. 
+
+## Example: PCR
+
+```{r }
+validationplot(pcrfit, val.type="MSEP")
+
+```
+
+- Predict the `medv` using 5 principle components and calculate the MSE.
+
+```{r}
+# Training set
+train_preds<-predict(pcrfit, x[train,], ncomp=5)
+train.5=mean((train_preds-standardBoston$medv[train])^2)
+
+# Test set
+test_preds<-predict(pcrfit, x[test,], ncomp=5)
+test.5=mean((test_preds-standardBoston$medv[test])^2)
+
+train.5
+test.5
+```
+
+Reminder, basic OLS MSE (train): 0.01545936
+The first 5 Principal Components were able to predict on the test set with similar accuracy to OLS on the training data!
+
+
+5. (18 points) Pick one of the 4 exercises you have worked on, i.e., cross-validation, subset selection, shrinkage, or dimension reduction, then please explain the procedure in your own words to someone who has absolutely have no experience in data analytics, i.e., a 10 year old, or someone in your company who does not know predictive analytics. 
+
+Regularization / Shrinkage Methods
+
+When we build a prediction model, we want our model to work on new data, not just the small amount of data we train it on.  If a model fits the training data too well, it doesn't usually make good predictions on new data.  One way we can build a model that predicts well on new data is to fit the training model conservatively - making the predicted values less sensitive to changes in the values of the input variables.  Making the training model's predictions less sensitive to the exact values of inputs translates to better performance on the test data, and better predictions using new data sets.
+
+Another thing regularization can do is remove less useful variables from our training model.  So if we have a very large number of variables, and we suspect some of them might not contribute much to the accuracy of the predictions we want to make, we can apply regularization to remove these extra, uneeded variables.  This also improves the predictions of the model on new data, since it is only using helpful input variables to make a prediction.
+
+
+6. (10 points) Please summarize your learning outcome for this assignment both in terms of R and methods learned in this module.
+
+This was a great review of Ridge & LASSO regression, Principal Components analysis, cross validation and step wise selection methods, which appear to be very helpful in developing predictive models.  I have previously been warned against the use of step wise selection, so it was nice to see where it could potentially be useful in building predictive models.  I did a deeper dive into Ridge and LASSO regularization for this lesson, choosing some very basic models and plugging in values of x and y, then applying the penalty / regularization parameters with the Ridge and LASSO formulas to experience the minimization of the slope in both cases - one where slope asymptotically approaches zero as lambda increases (Ridge), and one where slope can become zero as lambda increases.  I really feel like I understand these methods now.

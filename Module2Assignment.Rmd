@@ -1,0 +1,333 @@
+---
+title: |
+  | ADMN 872: Predictive Analytics
+  |
+  | Assigment 2 
+author: |
+  | Kyle P. Rasku
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(fpp2) #a package with data sets
+library(forecast) #need for function forecast and autoplot
+library(gridExtra) #need for two plots side by side
+#the two packages below are needed for autoplot and ggseasonplot
+library(ggplot2)
+library(ggfortify)
+library(kableExtra)
+library(car)
+```
+
+## Data
+
+Consider the data set 'airbnbdata.csv'. This data is a simplified version of Kaggle data set (<https://www.kaggle.com/dgomonov/new-york-city-airbnb-open-data>)
+
+We are trying to predict per night price of Airbnb's in NYC.
+
+Variables are as follows:
+
+- `id`: Listing id
+- `neighbourhood_group`: Neighborhood in NYC
+- `room_type`: listing space type
+- `price`:price in dollars
+- `minimum_nights`: amount of nights minimum
+- `number_of_reviews`: number of reviews
+
+
+## Questions
+
+1. (10 points) Data is imported to R for you, and and named `airbnb`.
+
+Please separate the testing and training sets:
+    
+    - set a seed
+    - separate 5% of your data into testing set
+
+```{r}
+airbnb=read.table("https://unh.box.com/shared/static/nq5382z6ek8js3we09b9ma1qa3wpr2g0.csv", header = TRUE, sep=",", dec=".")
+
+set.seed(121)
+train_idx <- sample(seq_len(nrow(airbnb)), size = floor(0.95 * nrow(airbnb)))
+
+train <- airbnb[train_idx, ]
+test = airbnb[-train_idx, ]
+
+nrow(airbnb)
+nrow(train)
+nrow(test)
+```
+
+**For questions 2 to 6 use training set***
+
+2. (10 points) Explore if a linear relationship is viable between `price` (dependent variable) and `number_of_reviews` and between `price` and `minimum_nights` by obtaining the scatter plots and the respective correlations.
+
+```{r}
+hist(train$price,main="Histogram of price in dollars")
+```
+
+
+This continuous variable is zero-inflated / negative-binomial in distribution, like a lot of price data.
+
+```{r}
+hist(train$number_of_reviews,main="Histogram of number of reviews")
+```
+
+
+And this data is Poisson distributed, which isn't surprising since it is count data (# of reviews).
+
+```{r}
+plot(y=train$price, x=train$number_of_reviews, col="red")
+```
+
+
+Since neither variable is normally distributed, it would be unlikely that the relationship would be linear.
+
+To look at a correlation, let's do Spearman's rho.
+
+```{r}
+library(Hmisc)
+price_nr_corr <- rcorr(x=train$number_of_reviews, y=train$price, type="spearman")
+price_nr_corr
+```
+
+
+This value indicates a significant but small relationship between a positive value of x (1 more review) and a negative value of y (slightly lower price).
+
+I think it is likely that number of reviews could end up being something associated with either a very positive or very negative experience at a property, similar to how tweets get a lot of positive traction (likes, re-tweets) or negative traction (ratioed - many comments, and comparatively few likes and re-tweets). It probably has a lot more to do with other things than price.
+
+```{r}
+hist(train$minimum_nights,main="Histogram of minimum nights")
+```
+
+
+This data is also a count, but its range is likely much more restricted than that of number of reviews.
+
+```{r}
+plot(y=train$price, x=train$minimum_nights, col="blue")
+```
+
+
+Here you can see the discrete-pooling associated with the restricted range of values for minimum nights, similar to a categorical variable.  
+
+It looks like a negative-binomial relationship again, with the most expensive properties having fewer minimum nights, and properties with very high minimum nights having lower prices, but there are still a large # of lower-priced, lower-minimum properties available.
+
+Spearman's rho again...
+
+```{r}
+price_mn_corr <- rcorr(x=train$minimum_nights, y=train$price, type="spearman")
+price_mn_corr
+```
+
+
+It looks like this positive relationship is significant at the 95% CI, with p<0.05.  The longer the minimum stay, the more money the lessor is on average, likely to collect.
+
+3. (10 points) Explore if a relationship is viable between `price` (dependent variable) and `neighbourhood_group` by obtaining the box plot.
+
+```{r}
+ggplot(train, aes(x=neighbourhood_group, y= price)) + 
+        geom_boxplot()
+```
+
+
+Looking at the boxplot, we can see a lot of outliers, reducing the size of the boxes so that it is difficult to see the values of summary statistics.
+
+We can guess the average price of a Manhattan property would be the highest, and we can also guess Manhattan properties would have the greatest IQR, followed by Brooklyn. We can see the pull of outliers on the mean value of Manhattan's prices - while the Manhattan box and the Brooklyn box are about the same size, Brooklyn's mean line is lower in its box than Manhattan's mean line.  Looks like we should compare median and mode for Manhattan's prices; they may be a bit apart. 
+
+```{r}
+library(dplyr)
+group_by(train, factor(neighbourhood_group)) %>%
+  summarise(
+    count = n(),
+    mean = mean(price, na.rm = TRUE),
+    sd = sd(price, na.rm = TRUE),
+    median = median(price, na.rm = TRUE),
+    IQR = IQR(price, na.rm = TRUE)
+  )
+```
+
+
+It looks like Manhattan does have the highest IQR, but only by $1!
+Mean price for Manhattan is \$181.70, and Median price is \$145.50, a difference of $36.20. However, Staten Island's variation between Mean and Median is greater at \$45.63. This is likely due to Staten Island's very small n (19), those 2 outliers will have a very large influence!
+
+Compute Kruskal-Wallis test.
+
+```{r}
+kruskal.test(price ~ factor(neighbourhood_group), data = train)
+```
+
+There are significant differences between the neighbourhood groups.
+
+Compare neighbourhoods pair-wise.
+
+```{r}
+pairwise.wilcox.test(train$price, factor(train$neighbourhood_group),
+                 p.adjust.method = "BH")
+```
+
+
+No statistically significant price differences exist between Staten Island & Bronx and Staten Island & Queens.
+
+All the other combinations are significant at the 99% CI.
+
+4. (20 points) Estimate 3 simple linear regression models between `price` (as the dependent variable) and the following variables: `minimum_nights`, `neighbourhood_group`, and `room_type` (recall to specify categorical variables as a factor) separately. Report your regression models. **Comment on the significance of the slopes.**
+
+Simple linear regression isn't going to have a great outcome, where we are doing so between non-normally-distributed variables without linear relationships, but here we go. :)
+
+```{r}
+slr1=lm(price~minimum_nights, data=train)
+summary(slr1)
+```
+
+Y-intercept is $158.80; Slope is -0.014 so, a 1 night increase in the minimum # of nights *would be* associated with a \$0.014 decrease in the average price of the property *if* p-value was significant, but it isn't. Adjusted R2 for this model is negative. p-value for the model's F-statistic is highly insignificant.  This is the definition of a bad model. :) 
+
+```{r}
+slr2=lm(price~factor(neighbourhood_group), data=train)
+summary(slr2)
+```
+
+The Y-intercept is $71.24, this indicates the average price when neighbourhood_group is Bronx, which is the reference group. All the other neighbourhood_groups have positive beta-coefficients compared to the Bronx, but only Brooklyn (90% CI) and Manhattan (99% CI) are significantly different in this linear model.  This model is assuming a lot of things that the pairwise Wilcoxon rank test didn't.  That comparison is likely more accurate than this one.  The p-value for the F-statistic is significant here, and Adjusted R2 is 0.028 - very low, but at least positive.
+
+Before calculating a model using room_type, I'd like to know a bit more about this variable:
+
+```{r}
+ggplot(train, aes(x=room_type, y= price)) + 
+        geom_boxplot()
+```
+```{r}
+group_by(train, factor(room_type)) %>%
+  summarise(
+    count = n(),
+    mean = mean(price, na.rm = TRUE),
+    sd = sd(price, na.rm = TRUE),
+    median = median(price, na.rm = TRUE),
+    IQR = IQR(price, na.rm = TRUE)
+  )
+```
+
+```{r}
+slr3=lm(price~factor(room_type), data=train)
+summary(slr3)
+```
+
+In this model, the Y-Intercept is \$195.33, for the baseline group which is "Entire home/apt".  Not surprisingly, all coefficients show an average decrease in price compared to this group.  The difference between "Entire home/apt" and "Private room" is an average decrease in price of \$93.45, significant at the 99% CI.  The average difference between "Entire home/apt" and 'Shared room' is a decrease of $86.79 (which is interestingly, less of a decrease than 'Private room', but this is only significant at 90% CI, and n for 'Shared room' is only 15 so its one outlier value is probably responsible).  The p-value of the F-statistic is significant, and Adjusted R2 is the highest of the 3 values at 0.097 (still very low).
+
+5. (15 points) Estimate a multiple linear regression model between ``price` (as the dependent variable) and the following variables: `minimum_nights`, `neighbourhood_group`, and `room_type`. Report your regression model. **Comment on the significance of the partial effects**
+
+```{r}
+mlr=lm(price~minimum_nights+factor(neighbourhood_group)+factor(room_type), data=train)
+summary(mlr)
+```
+
+Woo, now our Adjusted R2 is up to 0.1155, so altogether - assuming a linear relationship with normally distributed residuals - these variables explain 11.55% of the variation in price. So, now the Y-Intercept value is the avg. price of a property that is an 'Entire home/apt' in the 'Bronx', and everything else is in relation to this.  Minimum nights, Queens and Staten Island are not significant. Changing from 'Entire home/apt' in the 'Bronx' to 'Brooklyn' increases avg. price by \$59.68, significant at the 90% CI. Changing from 'Entire home/apt' in the 'Bronx' to 'Manhattan' increases avg. price by \$92.31, significant at the 95% CI. Changing from 'Entire home/apt' in the 'Bronx' to a 'Private room' (still in the 'Bronx') decreases avg. price by \$89.92, significant at the 99% CI. Changing from 'Entire home/apt' in the 'Bronx' to a 'Shared room' (still in the 'Bronx') decreases avg. price by \$85.68, significant at the 90% CI.  Changing from 'Entire home/apt' in the 'Bronx' to a 'Private room' in 'Manhattan'? 123.27 + 92.31 - 89.92 = avg. price of \$125.66.
+
+6. (10 points) Check the residuals of your model in part 5. Do you believe that the assumptions of regression are met?
+
+```{r}
+par(mfrow=c(2,2)) # Change the panel layout to 2 x 2
+plot(mlr)
+par(mfrow=c(1,1)) # Change back to 1 x 1
+```
+
+Outliers are playing a role in lack of fit, but there's also heteroskedasticity (Scale-Location plot) and lack of fit where the linear model leaves behind residuals with a pattern that wasn't properly fitted by the model.  The assumptions of linear regression are not met.
+
+```{r}
+library(car)
+vif(mlr)
+```
+
+The model has no significant multicolinearity. 
+
+7. (20 points) Calculate the accuracy models for all four models you have estimated, using the testing data. Which model predicts the `price` better?
+
+```{r}
+# Try to predict price using slr1:
+# slr1=lm(price~minimum_nights, data=train)
+
+pred_slr1 = predict(slr1, data.frame(test))
+ape_slr1 = abs(test$price - pred_slr1) / test$price
+se_slr1 = (test$price - pred_slr1)^2
+
+accuracy(pred_slr1, test$price)
+
+```
+```{r}
+plot(x=pred_slr1, y=test$price)
+```
+
+The MAPE is 71.68%, very inaccurate.  Also, the plot shows that where test price is below $200, most of the time, the model is predicting it is >\$158.50!
+
+```{r}
+# Try to predict price using slr2:
+# slr2=lm(price~factor(neighbourhood_group), data=train)
+
+pred_slr2 = predict(slr2, data.frame(test))
+ape_slr2 = abs(test$price - pred_slr2) / test$price
+se_slr2 = (test$price - pred_slr2)^2
+
+accuracy(pred_slr2, test$price)
+
+```
+```{r}
+plot(x=pred_slr2, y=test$price)
+```
+
+This model also has a high MAPE (66%), and is making very wrong predictions. Here where the predicted price was >$180, the true price was anywhere between < \$100 and close to \$500.
+
+```{r}
+# Try to predict price using slr3:
+# slr3=lm(price~factor(room_type), data=train)
+
+pred_slr3 = predict(slr3, data.frame(test))
+ape_slr3 = abs(test$price - pred_slr3) / test$price
+se_slr3 = (test$price - pred_slr3)^2
+
+accuracy(pred_slr3, test$price)
+
+```
+
+```{r}
+plot(x=pred_slr3, y=test$price)
+```
+
+This model is only 46.15% wrong, the best yet. When it predicted the price was a little more than \$100, the actual price was somewhere between \$5 and about \$150 (with 1 outlier at just under \$300) (those must be the shared rooms).  The predictions for the private rooms were a lot more inaccurate, with the true price between \$50 and \$350 with 2 outliers, and prediction of \$200.  This is still a lot better than either of the two previous models.
+
+```{r}
+# Finally, try to predict price using mlr:
+# mlr=lm(price~minimum_nights+factor(neighbourhood_group)+factor(room_type), data=train)
+
+pred_mlr = predict(mlr, data.frame(test))
+ape_mlr = abs(test$price - pred_mlr) / test$price
+se_mlr = (test$price - pred_mlr)^2
+
+accuracy(pred_mlr, test$price)
+
+```
+
+```{r}
+plot(x=pred_mlr, y=test$price)
+```
+
+The mlr is the most accurate with MAPE of 45.8%.  This is still not that much better than using room_type alone.  Here we can see that as test prices rise, predicted prices also rise!  That's good.  However, the range is way off.  The test prices range from about \$50 to \$450 (ignoring outliers), and the model does ok predicting some price areas - where price was < \$100, the model predicted anywhere between about \$10 and \$125.  However, where prices were > \$200, the model predicted all of these were \$225 when the true range was $100-450.
+
+8. (5 points) Comment on your findings in terms of:
+
+- Would you recommend Airbnb to use your model for predicting prices of their listings?
+
+Um..no way :)
+
+- Do you believe your predictions are accurate? 
+
+Ha ha!! That's a good one :)
+
+- If you could have any data you wanted, which other variable(s) you would have liked to include in your regression?
+
+Longitude and latitude of all properties, so I could compute things like proximity to sporting arenas, concert halls, convention centers, theatres, museums, parks, colleges and universities, plus # and ratings of restaurants and hotels nearby.
+
+Zip codes and median home prices for each zip code.
+
+Instead of number of reviews, how about average customer rating?  Number of repeat customers / visitors?
+
+

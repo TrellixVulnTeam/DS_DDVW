@@ -1,0 +1,146 @@
+---
+title: |
+  | ADMN 872: Predictive Analytics
+  |
+  | Assigment 1
+author: |
+  | Kyle P Rasku
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(fpp2)
+```
+
+## Introduction
+
+For your first assignment, you can use this as a template. When you need to include and R code chuck, you can do so by clicking insert, and choosing R. The following is what you would get
+
+```{r}
+
+```
+
+When you are done, or any time in between, you can run the code by clicking on `knitr`, but please remember to save your file first. For more information, please refer to the R-Markdown video.
+
+## Example: 
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+Including Plots:
+
+You can also embed plots, for example:
+
+```{r}
+plot(cars$speed)
+```
+
+## Data
+
+For this assignment, you will be using a dataset that is preloaded in `R`, in the `R` package `fpp2`. The data set we will be using is `arrivals`. Please use `R` help, i.e., `?arrivals` to obtain more information about the data. Mainly this is a time series data sets which considers quarterly international arrivals to Australia from 4 countries: the variables are `Japan`, `NZ` (New Zealand), `UK` , and `US`. Each variable corresponds to arrivals from the corresponding country.
+
+You can type in your responses and code after each question in this document. You need to submit the html file R Markdown creates.
+
+## Questions
+
+1. (15 points) Compute the mean and the standard deviation for all four variables. Are the means similar? How about the standard deviations? Comment on this.
+
+```{r}
+summary(arrivals)
+```
+```{r, echo=TRUE}
+for(i in colnames(arrivals)) {
+  cat("Standard Deviation", i, ":", sd(arrivals[,i], na.rm = TRUE), "\n")
+}
+```
+The mean # of flights varies quite a bit from one country of origin to another.  
+So do the min and max, for that matter!
+The U.S. has the smallest mean number of flights to Australia of the four nations of origin, and the lowest max.
+The U.K. has a low min, but a much higher mean and max than the U.S.
+Japan has the lowest min, but a higher max than the U.S.
+New Zealand has the largest standard deviation. It's mean and max are the highest of the four origin countries, and it's min is also highest, but the difference between min and max is about 294 flights, and this is the largest difference.  For the U.S. this difference is about 112, for the U.K. about 249 and for Japan, about 218.  
+New Zealand's mean value is ~16 flights higher than its median, and the U.K.'s mean value is ~11 flights above its median.  This suggests that there is some higher outlier impact, particularly with NZ.
+Japan, on the other hand, has a mean value that is ~14 flights below the median value, suggesting there is outlier impact in the other direction for Japan.
+
+
+2. (20 points) Obtain the correlation between `US` and a) `UK`, b) `Japan`, c) `NZ`. Briefly comment on the correlations, do you see a significant correlations between arrivals from the US and any other country?
+
+```{r}
+cor(arrivals[,"US"], arrivals[,"UK"])
+cor(arrivals[,"US"], arrivals[,"Japan"])
+cor(arrivals[,"US"], arrivals[,"NZ"])
+```
+
+If there is a linear relationship between these arrival numbers, then the greatest positive linear relationship exists between US and UK arrivals, and US and NZ arrivals.
+The positive linear relationship between US and Japan arrivals is weak.
+It isn't possible to interpret these numbers fully without looking at scatterplots.
+
+3. (15 points) Obtain the histograms for all four variables. Briefly comment on the shapes. Do they look like they are normally distributed?  
+
+```{r}
+for(i in colnames(arrivals)) {
+  title <- c("Histogram of Arrivals from", i)
+  x_axis <- c(i, "Arrivals")
+  hist(arrivals[,i], main = title, xlab = x_axis)
+}
+```
+
+These histograms are not normally distributed.
+But these are count data, numbers of arrivals, so I might expect a Poisson distribution.  
+The only two that approximate this are NZ and the UK.
+
+4. (15 points) Obtain the scatter-plots between `US` and a) `UK`, b) `Japan`, c) `NZ`. Are these plots reasonable compared to the correlations you calculated in question 2? (hint: see how `plot` vs `plot.default` performs)
+
+```{r}
+plot(y = arrivals[,"US"], x = arrivals[,"UK"], xlab="UK Arrivals", ylab="US Arrivals")
+smoothScatter(y = arrivals[,"US"], x = arrivals[,"Japan"], xlab="Japan Arrivals", 
+     ylab="US Arrivals")
+plot.default(y = arrivals[,"US"], x = arrivals[,"NZ"], xlab="NZ Arrivals", 
+     ylab="US Arrivals", col="red")
+```
+
+For some reason, my call to plot is causing lines and labels to show up instead of points!  
+I am not sure why this is happening, since usually a call to plot(x, y) just results in a simple scatterplot with circular points, more like what is showing up here for plot.default.  
+I added the smoothScatter call for fun.
+
+The relationship between US and UK arrivals is parabolic. 
+The relationship between US and Japan arrivals looks pretty non-existent.
+The relationship between US and NZ arrivals is slightly parabolic, or perhaps linear but even if you fit a function to this data there would be a lot of variation.
+
+5. (15 points) Plot a time series plot for each variable (hint: `plot.ts` or `autoplot`). Do you see any patterns over time for any one of the countries?
+
+```{r}
+for(i in colnames(arrivals)) {
+  title <- c("Arrivals from", i)
+  x_axis <- c(i, "Arrivals")
+  plot.ts(arrivals[,i], main = title, xlab = x_axis)
+}
+```
+
+Japanese arrivals to Australia peak in about 1995, and have declined pretty steadily since.
+Arrivals from the US, NZ and UK have risen steadily over the years, with a few exceptions here and there.
+There is an annual cycle to this data, so it has both trend and seasonality.
+
+6. (10 points) Based on the analysis you have done here, what have you learned about `arrivals` data?
+
+```{r}
+autoplot(arrivals)
+```
+
+Australian arrivals data has both trend and seasonality for all of the nations of origin.
+New Zealand's arrivals have risen the most over time, while the UK's arrivals vary the most.   
+The US's arrivals don't vary much, and have risen only slightly compared to the UK and NZ.
+Japan's arrivals are the only count to peak in 1995 and then decline since.
+There is a spike in arrivals for both the US and NZ in the late 1980s.
+Relationships between US arrivals data and that of other nations are likely not linear.  
+
+7. (10 points) Can you summarize your learning outcome for this assignment?
+
+Descriptive statistics and distribution plots are essential to understanding the relationships between data in a data set. Numbers alone will not give the analyst a good understanding of patterns, trends, relationships and correlations. The size of a computed correlation coefficient does not always indicate the strength of a linear relationship.  It is always necessary to see a plot of the data to see if the relationship between the data is truly linear.
+
+
